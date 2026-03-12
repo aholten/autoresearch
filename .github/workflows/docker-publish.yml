@@ -1,0 +1,65 @@
+# Build and push the autoresearch Docker image to Docker Hub.
+#
+# Triggers:
+#   - Push to master (deploys "latest" + short SHA tag)
+#   - Tags matching v*.*.* (deploys semver tag + "latest")
+#   - Manual dispatch (workflow_dispatch)
+#
+# Required repository secrets:
+#   DOCKERHUB_USERNAME — your Docker Hub username
+#   DOCKERHUB_TOKEN   — a Docker Hub access token (not your password)
+#                        Create one at: https://hub.docker.com/settings/security
+#
+# The image is pushed to: docker.io/<DOCKERHUB_USERNAME>/autoresearch
+
+name: Docker Build & Push
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/autoresearch
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Extracts tags and labels for the Docker image.
+      # On master push:  "latest" + "sha-abc1234"
+      # On version tag:  "1.2.3" + "latest"
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=short
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

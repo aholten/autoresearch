@@ -1,0 +1,114 @@
+# =============================================================================
+# docker-compose.yml for autoresearch — GPU training with persistent data cache
+# =============================================================================
+#
+# Usage:
+#   docker compose build                                  # build the image
+#   docker compose run autoresearch uv run prepare.py     # download data (once)
+#   docker compose up                                     # start training
+#
+# This file configures:
+#   - GPU passthrough to the container
+#   - Persistent volume for training data cache
+#   - Shared memory size for PyTorch DataLoader
+#
+# WSL2 note: This works identically whether you're on native Linux or WSL2,
+# as long as Docker and nvidia-container-toolkit are properly installed.
+# See wsl_setup.sh for the full WSL2 setup procedure.
+# =============================================================================
+
+services:
+  autoresearch:
+    # -------------------------------------------------------------------------
+    # Build configuration
+    # -------------------------------------------------------------------------
+    # "context: ." means Docker uses the current directory (repo root) as the
+    # build context. It sends all files (minus .dockerignore patterns) to the
+    # Docker daemon for the build.
+    # -------------------------------------------------------------------------
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    # -------------------------------------------------------------------------
+    # GPU reservation
+    # -------------------------------------------------------------------------
+    # This is the modern (Compose v2) way to request GPU access. It replaces
+    # the old `runtime: nvidia` syntax.
+    #
+    # "count: all" — passes ALL available GPUs into the container. Since
+    # autoresearch is single-GPU, you could use "count: 1" instead. We use
+    # "all" for simplicity; train.py only uses cuda:0 anyway.
+    #
+    # "capabilities: [gpu]" — tells the NVIDIA container runtime to set up
+    # the GPU device files, driver libraries, and CUDA runtime inside the
+    # container.
+    #
+    # Under the hood, this requires nvidia-container-toolkit to be installed
+    # on the host. Without it, Docker doesn't know how to map GPU devices.
+    #
+    # WSL2 note: GPU passthrough in WSL2 works through a virtual GPU device
+    # (/dev/dxg) that the Windows NVIDIA driver exposes. The container toolkit
+    # handles this transparently — you don't need to do anything special.
+    # Just make sure your Windows-side NVIDIA driver is >= 570.
+    # -------------------------------------------------------------------------
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    # -------------------------------------------------------------------------
+    # Shared memory size
+    # -------------------------------------------------------------------------
+    # PyTorch's DataLoader uses shared memory (/dev/shm) to pass tensors
+    # between worker processes. Docker defaults /dev/shm to 64 MB, which
+    # causes "bus error" crashes when workers try to share large batches.
+    #
+    # 1 GB is generous for this project. If you see "bus error" or
+    # "insufficient shared memory", increase this value.
+    # -------------------------------------------------------------------------
+    shm_size: "1g"
+
+    # -------------------------------------------------------------------------
+    # Persistent data volume
+    # -------------------------------------------------------------------------
+    # prepare.py downloads ~2 GB of data shards and trains a BPE tokenizer,
+    # storing everything in ~/.cache/autoresearch/. Without this volume mount,
+    # that data would be lost every time the container stops.
+    #
+    # We bind-mount the HOST's ~/.cache/autoresearch/ directory into the
+    # container at /root/.cache/autoresearch/. This means:
+    #   - Data persists across container rebuilds
+    #   - You can inspect the cached data from the host filesystem
+    #   - Multiple containers share the same cache (careful with concurrency)
+    #
+    # The trailing slashes are optional but make it clear these are directories.
+    # -------------------------------------------------------------------------
+    volumes:
+      - ~/.cache/autoresearch:/root/.cache/autoresearch
+
+    # -------------------------------------------------------------------------
+    # Environment variables (optional overrides)
+    # -------------------------------------------------------------------------
+    # PYTORCH_ALLOC_CONF — train.py already sets "expandable_segments:True" in
+    # code, but you can override CUDA memory allocation behavior here if needed.
+    #
+    # NVIDIA_VISIBLE_DEVICES — set to a specific GPU index (e.g., "0") if you
+    # have multiple GPUs and want to pin training to one. By default, "all"
+    # GPUs are visible (controlled by the deploy section above).
+    # -------------------------------------------------------------------------
+    # environment:
+    #   - PYTORCH_ALLOC_CONF=expandable_segments:True
+    #   - NVIDIA_VISIBLE_DEVICES=all
+
+    # -------------------------------------------------------------------------
+    # Container naming
+    # -------------------------------------------------------------------------
+    # Gives the running container a predictable name so you can easily:
+    #   docker exec -it autoresearch bash
+    #   docker logs autoresearch
+    # -------------------------------------------------------------------------
+    container_name: autoresearch

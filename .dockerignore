@@ -1,0 +1,15 @@
+# Don't send the local venv into the Docker build context.
+# The container creates its own venv via `uv sync`.
+.venv/
+
+# Git history isn't needed in the image
+.git/
+
+# Docker files don't need to be in the image
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Cache and data (mounted as volume instead)
+__pycache__/
+*.pyc
