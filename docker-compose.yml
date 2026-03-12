@@ -20,15 +20,12 @@
 services:
   autoresearch:
     # -------------------------------------------------------------------------
-    # Build configuration
+    # Image
     # -------------------------------------------------------------------------
-    # "context: ." means Docker uses the current directory (repo root) as the
-    # build context. It sends all files (minus .dockerignore patterns) to the
-    # Docker daemon for the build.
+    # Pull the pre-built image from Docker Hub (pushed by GitHub Actions).
+    # To force a refresh: docker compose pull
     # -------------------------------------------------------------------------
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: aholten1/autoresearch:latest
 
     # -------------------------------------------------------------------------
     # GPU reservation

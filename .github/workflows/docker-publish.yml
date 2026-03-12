@@ -16,7 +16,7 @@ name: Docker Build & Push
 
 on:
   push:
-    branches: [master]
+    branches: [master, rtx-3070]
     tags: ["v*.*.*"]
   workflow_dispatch:
 
